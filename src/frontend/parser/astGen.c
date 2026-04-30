@@ -6,14 +6,40 @@ arena allocator for nodes, start with body node. child nodes will be allocated i
 allowing for sibling nodes to be children of the same parent and many children from one parent, no reallocation
 */
 
-#define nodeStep 128
+const char* nodeNames[] = {
+    [bodyNode] = "bodyNode", [operatorNode] = "operatorNode", 
+	[conditionalNode] = "conditionalNode", [literalNode] = "literalNode", 
+	[identifierNode] = "identifierNode", [declarationNode] = "declarationNode", 
+	[castNode] = "castNode"
+};
+
+const char* tokenNames[] = {
+    [opPlus] = "opPlus", [opMinus] = "opMinus", [opEqual] = "opEqual",
+    [opMul] = "opMul", [opDiv] = "opDiv", [opLogicalOr] = "opLogicalOr",
+    [opLogicalAnd] = "opLogicalAnd", [opLogicalNot] = "opLogicalNot",
+    [opBitwiseNot] = "opBitwiseNot", [opBitwiseOr] = "opBitwiseOr",
+    [opShiftRight] = "opShiftRight", [opShiftLeft] = "opShiftLeft",
+    [opBitwiseAnd] = "opBitwiseAnd", [opDereference] = "opDereference",
+    [opReference] = "opReference", [opCmpEquals] = "opCmpEquals",
+    [opCmpGreater] = "opCmpGreater", [opCmpLess] = "opCmpLess",
+    [opCmpGrEq] = "opCmpGrEq", [opCmpLeEq] = "opCmpLeEq",
+    [curlyBraceR] = "curlyBraceR", [curlyBraceL] = "curlyBraceL",
+    [parenthesesL] = "parenthesesL", [parenthesesR] = "parenthesesR",
+    [keywordIf] = "keywordIf", [keywordElse] = "keywordElse",
+    [keywordWhile] = "keywordWhile", [keywordInt] = "keywordInt",
+    [keywordChar] = "keywordChar", [keywordPtr] = "keywordPtr",
+    [endStatement] = "endStatement", [identifier] = "identifier",
+    [literal] = "literal", [nullToken] = "nullToken"
+};
+
+#define nodeStep 2048
 
 arena nodePool;
 
 void initPool(){nodePool = newArena(nodeStep * sizeof(node));}
 
 node constructNode(const nodeType type){
-	return (node){.type = type, .firstChild = NULL, .lastChild = NULL, .sibling = NULL};
+	return (node){.type = type, .val = (token){.type = nullToken}, .firstChild = NULL, .lastChild = NULL, .sibling = NULL};
 }
 
 node* addNode(const nodeType type){
@@ -48,14 +74,15 @@ token eatToken(){return tokensScanned++ >= srcArr.numTokens ? (token){.type = nu
 node* parseBody(); node* parseExpression(const uint16_t minPrecedence);
 
 node* parseArgument(){
-	const token t = eatToken();
-	node* n;
+	const token t = eatToken(); node* n;
 	switch(t.type){
 		case literal: n = addNode(literalNode); break;
 		case identifier: n = addNode(identifierNode); break;
-		case parenthesesL: n = parseExpression(0); eatToken(); return n;
-		case opMinus: opReference: opDereference: opLogicalNot: opBitwiseNot:
-		n->type = operatorNode; addChildFromPtr(n, parseExpression(110));
+		case keywordInt: case keywordChar: n = addNode(declarationNode); n->val = t; addChildFromPtr(n, parseArgument()); return n;
+		case parenthesesL: if(peekToken().type == keywordInt){const token t1 = eatToken(); eatToken(); n = addNode(castNode); n->val = t1; addChildFromPtr(n, parseArgument()); return n;}
+		n = parseExpression(0); eatToken(); return n;
+		case opMinus:
+		n = addNode(operatorNode); addChildFromPtr(n, parseExpression(110));
 	}
 	return n->val = t, n;
 }
@@ -90,11 +117,12 @@ node* parseExpression(const uint16_t minPrecedence){
 
 node* parseIf(){
 	node* ifNode = addNode(conditionalNode);
-	addChildFromPtr(ifNode, parseExpression(0));
+	addChildFromPtr(ifNode, parseExpression(0)); eatToken(); // eat curly to prevent double nested body stuff
 	addChildFromPtr(ifNode, parseBody());
-	if(peekToken().type == keywordElse){
+	if(peekToken().type == keywordElse){ eatToken(); eatToken();
 		addChildFromPtr(ifNode, parseBody());
 	} ifNode->val = (token){.type = keywordIf};
+	return ifNode;
 } // includes else parsing
 
 node* parseWhile(){
@@ -102,23 +130,42 @@ node* parseWhile(){
 	addChildFromPtr(whileNode, parseExpression(0));
 	addChildFromPtr(whileNode, parseBody());
 	whileNode->val = (token){.type = keywordWhile};
+	return whileNode;
 } 
 
 node* parseBody(){
-// parse until located } or EOF
+// parse until located } or EOF 
 	node* ret = addNode(bodyNode); token ct;
 	while(ct = peekToken(), !(ct.type == nullToken | ct.type == curlyBraceR)){
-		token ft = eatToken();
-		switch(ft.type){
-			case curlyBraceL: addChildFromPtr(ret, parseBody()); break;
-			case keywordIf: addChildFromPtr(ret, parseIf()); break;
-			case keywordWhile: addChildFromPtr(ret, parseWhile()); break;
+		switch(ct.type){
+			case curlyBraceL: eatToken(); addChildFromPtr(ret, parseBody()); continue;
+			case keywordIf: eatToken(); addChildFromPtr(ret, parseIf()); continue;
+			case keywordWhile: eatToken(); addChildFromPtr(ret, parseWhile()); continue;
 			default: addChildFromPtr(ret, parseExpression(0));
-		}
+		} eatToken();
 	}eatToken(); return ret;
 }
 
 node constructTree(tokenArray arr){
-	srcArr = arr; tokensScanned = 0;
+	tokensScanned = 0;
+	srcArr = arr; initPool();
+	node* b = parseBody();
+	return *b;
 }
 
+void printTree(node* n, int depth) {
+    if (!n) return;
+    for (int i = 0; i < depth; i++) printf("  ");
+    const char* nName = (n->type <= declarationNode) ? nodeNames[n->type] : "UNKNOWN_NODE";
+    const char* tName = (n->val.type <= nullToken) ? tokenNames[n->val.type] : "UNKNOWN_TOKEN";
+
+    printf("[%s | %s", nName, tName);
+
+    printf("]\n");
+    fflush(stdout);
+    node* child = n->firstChild;
+    while (child) {
+        printTree(child, depth + 1);
+        child = child->sibling;
+    }
+}

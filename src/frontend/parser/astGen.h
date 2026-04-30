@@ -4,7 +4,7 @@
 #include "../lexer/tokenizer.h"
 
 typedef enum nodeType : uint8_t{
-	bodyNode, operatorNode, conditionalNode, literalNode, identifierNode
+	bodyNode, operatorNode, conditionalNode, literalNode, identifierNode, castNode, declarationNode
 }nodeType;
 
 typedef struct node{
@@ -13,3 +13,5 @@ typedef struct node{
 }node;
 
 node constructTree(tokenArray arr);
+
+void printTree(node* n, int depth);

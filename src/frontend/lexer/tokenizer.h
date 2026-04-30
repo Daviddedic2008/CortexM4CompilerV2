@@ -3,7 +3,7 @@
 #include <string.h>
 
 typedef enum tokenType : uint8_t{
-	opPlus, opMinus, opEqual, opMul, opDiv, opLogicalOr, opLogicalAnd, opLogicalNot, opBitwiseNot, opBitwiseOr, opShiftRight, opShiftLeft, opBitwiseAnd, opDereference, opReference, opCmpEquals, opCmpGreater, opCmpLess, opCmpGrEq, opCmpLeEq,
+	opPlus, opMinus, opNegate, opEqual, opMul, opDiv, opLogicalOr, opLogicalAnd, opLogicalNot, opBitwiseNot, opBitwiseOr, opShiftRight, opShiftLeft, opBitwiseAnd, opDereference, opReference, opCmpEquals, opCmpGreater, opCmpLess, opCmpGrEq, opCmpLeEq,
 	curlyBraceR, curlyBraceL, parenthesesL, parenthesesR,
 	keywordIf, keywordElse, keywordWhile, keywordInt, keywordChar, keywordPtr,
 	endStatement, identifier, literal, nullToken
