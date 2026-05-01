@@ -28,18 +28,21 @@ int8_t isSingleCharToken(const char c){
 		case '/': return opDiv;
 		case '-': return opMinus;
 		case '=': return opEqual;
+		case '>': return opCmpGreater;
+		case '<': return opCmpLess;
+		case '&': return opBitwiseAnd;
 		case '(': return parenthesesL;
 		case ')': return parenthesesR;
 		case '{': return curlyBraceL;
 		case '}': return curlyBraceR;
-		case ';': return endStatement;
+		case ';': case ',': return endStatement;
 	} return -1;
 }
 
 typedef struct{char* str; uint8_t type;}keyData;
 
 keyData keywords[] = {
-	{"int", keywordInt}, {"char", keywordChar}, {"if", keywordIf}, {"else", keywordElse}, {"while", keywordWhile}
+	{"int", keywordInt}, {"char", keywordChar}, {"void", keywordVoid}, {"if", keywordIf}, {"else", keywordElse}, {"while", keywordWhile}
 }; const uint8_t numKeywords = sizeof(keywords) / sizeof(keyData);
 
 void verifyAlphabeticalOrder(){

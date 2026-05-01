@@ -4,7 +4,7 @@
 #include "../lexer/tokenizer.h"
 
 typedef enum nodeType : uint8_t{
-	bodyNode, operatorNode, conditionalNode, literalNode, identifierNode, castNode, declarationNode
+	bodyNode, operatorNode, conditionalNode, literalNode, funcDefNode, funcCallNode, identifierNode, castNode, declarationNode
 }nodeType;
 
 typedef struct node{

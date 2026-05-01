@@ -10,11 +10,12 @@ const char* nodeNames[] = {
     [bodyNode] = "bodyNode", [operatorNode] = "operatorNode", 
 	[conditionalNode] = "conditionalNode", [literalNode] = "literalNode", 
 	[identifierNode] = "identifierNode", [declarationNode] = "declarationNode", 
-	[castNode] = "castNode"
+	[castNode] = "castNode", [funcDefNode] = "funcDefNode", [funcCallNode] = "funcCallNode"
 };
 
 const char* tokenNames[] = {
-    [opPlus] = "opPlus", [opMinus] = "opMinus", [opEqual] = "opEqual",
+    [opPlus] = "opPlus", [opMinus] = "opMinus", [opIncrement] = "opIncrement",
+	[opDecrement] = "opDecrement", [opEqual] = "opEqual", [keywordCharPtr] = "keywordCharPtr",
     [opMul] = "opMul", [opDiv] = "opDiv", [opLogicalOr] = "opLogicalOr",
     [opLogicalAnd] = "opLogicalAnd", [opLogicalNot] = "opLogicalNot",
     [opBitwiseNot] = "opBitwiseNot", [opBitwiseOr] = "opBitwiseOr",
@@ -27,7 +28,7 @@ const char* tokenNames[] = {
     [parenthesesL] = "parenthesesL", [parenthesesR] = "parenthesesR",
     [keywordIf] = "keywordIf", [keywordElse] = "keywordElse",
     [keywordWhile] = "keywordWhile", [keywordInt] = "keywordInt",
-    [keywordChar] = "keywordChar", [keywordPtr] = "keywordPtr",
+    [keywordChar] = "keywordChar", [keywordIntPtr] = "keywordIntPtr",
     [endStatement] = "endStatement", [identifier] = "identifier",
     [literal] = "literal", [nullToken] = "nullToken"
 };
@@ -69,19 +70,25 @@ void addChild(node* n, const node add){
 tokenArray srcArr; uint32_t tokensScanned;
 
 token peekToken(){return tokensScanned >= srcArr.numTokens ? (token){.type = nullToken} : *srcArr.tokens;}
+token peekAdvToken(const uint8_t i){return tokensScanned+i >= srcArr.numTokens ? (token){.type = nullToken} : *(srcArr.tokens+i);}
 token eatToken(){return tokensScanned++ >= srcArr.numTokens ? (token){.type = nullToken} : *(srcArr.tokens++);}
 
-node* parseBody(); node* parseExpression(const uint16_t minPrecedence);
+node* parseBody(); node* parseExpression(const uint16_t minPrecedence); node* parseFuncCall(const token t);
 
 node* parseArgument(){
-	const token t = eatToken(); node* n;
+	token t = eatToken(); node* n;
 	switch(t.type){
 		case literal: n = addNode(literalNode); break;
-		case identifier: n = addNode(identifierNode); break;
-		case keywordInt: case keywordChar: n = addNode(declarationNode); n->val = t; addChildFromPtr(n, parseArgument()); return n;
+		case identifier: switch(peekToken().type){
+			case parenthesesL: n = parseFuncCall(t); eatToken(); return n;
+			default: n = addNode(identifierNode);
+		} break;
+		case keywordInt: case keywordChar:
+		if(peekToken().type == opMul){eatToken(); t.type = t.type == keywordInt ?  keywordIntPtr : keywordCharPtr;}		
+		n = addNode(declarationNode); n->val = t; addChildFromPtr(n, parseArgument()); return n;
 		case parenthesesL: if(peekToken().type == keywordInt){const token t1 = eatToken(); eatToken(); n = addNode(castNode); n->val = t1; addChildFromPtr(n, parseArgument()); return n;}
 		n = parseExpression(0); eatToken(); return n;
-		case opMinus:
+		case opMinus: case opMul: case opBitwiseAnd:
 		n = addNode(operatorNode); addChildFromPtr(n, parseExpression(110));
 	}
 	return n->val = t, n;
@@ -98,15 +105,36 @@ uint16_t getPrecedence(const uint8_t t) {
         case opBitwiseOr: return 40;
         case opLogicalAnd: return 30;
         case opLogicalOr: return 20;
-        case opEqual: return 10;
+        case opEqual: case opIncrement: case opDecrement: return 10;
         default: return 0;
     }
+}
+
+node* parseFuncCall(const token t){
+	node* fcNode = addNode(funcCallNode);
+	fcNode->val = t; eatToken();
+	while(peekToken().type != parenthesesR){
+		addChildFromPtr(fcNode, parseExpression(0)); if(peekToken().type == parenthesesR) break; eatToken();
+	}return fcNode;
+}
+
+token peekOperator(){
+	token ret = peekToken(); const token tc = ret;
+	switch(peekAdvToken(1).type){
+		case opEqual: switch(ret.type){
+			case opEqual: ret.type = opCmpEquals; break;
+			case opPlus: ret.type = opIncrement; break;
+			case opMinus: ret.type = opDecrement; break;
+			case opCmpGreater: ret.type = opCmpGrEq; break;
+			case opCmpLess: ret.type = opCmpLeEq; break;
+		} 
+	} if(ret.type != tc.type) eatToken(); return ret;
 }
 
 node* parseExpression(const uint16_t minPrecedence){
 	node* left = parseArgument();
 	while(1){
-		token op = peekToken(); const uint16_t p = getPrecedence(op.type);
+		token op = peekOperator(); const uint16_t p = getPrecedence(op.type);
 		if(p < minPrecedence || !p) break;
 		eatToken();
 		node* right = parseExpression(p+1);
@@ -133,6 +161,17 @@ node* parseWhile(){
 	return whileNode;
 } 
 
+node* parseFuncDef(){
+	node* fdNode = addNode(funcDefNode);
+	node n = constructNode(literalNode); n.val = eatToken();
+	addChild(fdNode, n);
+	fdNode->val = eatToken(); eatToken();
+	while(peekToken().type != parenthesesR){addChildFromPtr(fdNode, parseArgument());}
+	eatToken(); eatToken();
+	addChildFromPtr(fdNode, parseBody());
+	return fdNode;
+}
+
 node* parseBody(){
 // parse until located } or EOF 
 	node* ret = addNode(bodyNode); token ct;
@@ -141,6 +180,7 @@ node* parseBody(){
 			case curlyBraceL: eatToken(); addChildFromPtr(ret, parseBody()); continue;
 			case keywordIf: eatToken(); addChildFromPtr(ret, parseIf()); continue;
 			case keywordWhile: eatToken(); addChildFromPtr(ret, parseWhile()); continue;
+			case keywordInt: case keywordChar: if(peekAdvToken(2).type == parenthesesL) addChildFromPtr(ret, parseFuncDef()); continue;
 			default: addChildFromPtr(ret, parseExpression(0));
 		} eatToken();
 	}eatToken(); return ret;
