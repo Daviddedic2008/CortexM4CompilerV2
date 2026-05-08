@@ -3,8 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef uint8_t bool;
-
 char* srcString;
 typedef struct{
 	char* str; uint16_t len;

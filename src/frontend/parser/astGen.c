@@ -35,7 +35,7 @@ const char* tokenNames[] = {
 
 #define nodeStep 2048
 
-arena nodePool;
+arena nodePool; jmp_buf compRetEnv;
 
 void initPool(){nodePool = newArena(nodeStep * sizeof(node));}
 
@@ -72,6 +72,7 @@ tokenArray srcArr; uint32_t tokensScanned;
 token peekToken(){return tokensScanned >= srcArr.numTokens ? (token){.type = nullToken} : *srcArr.tokens;}
 token peekAdvToken(const uint8_t i){return tokensScanned+i >= srcArr.numTokens ? (token){.type = nullToken} : *(srcArr.tokens+i);}
 token eatToken(){return tokensScanned++ >= srcArr.numTokens ? (token){.type = nullToken} : *(srcArr.tokens++);}
+token expect(const uint8_t type){if(peekToken().type == type){return eatToken();} else{longjmp(compRetEnv, 1);}}
 
 node* parseBody(); node* parseExpression(const uint16_t minPrecedence); node* parseFuncCall(const token t);
 
@@ -84,12 +85,15 @@ node* parseArgument(){
 			default: n = addNode(identifierNode);
 		} break;
 		case keywordInt: case keywordChar:
-		if(peekToken().type == opMul){eatToken(); t.type = t.type == keywordInt ?  keywordIntPtr : keywordCharPtr;}		
-		n = addNode(declarationNode); n->val = t; addChildFromPtr(n, parseArgument()); return n;
-		case parenthesesL: if(peekToken().type == keywordInt){const token t1 = eatToken(); eatToken(); n = addNode(castNode); n->val = t1; addChildFromPtr(n, parseArgument()); return n;}
-		n = parseExpression(0); eatToken(); return n;
+		if(peekToken().type == opMul){uint8_t pd = 0; while(peekToken().type == opMul){eatToken(); pd++;}t.type = t.type == keywordInt ?  keywordIntPtr : keywordCharPtr; t.val = pd;}		
+		n = addNode(declarationNode); n->val = t; t = eatToken(); addChild(n, (node){.type = identifierNode, .val = t}); return n;
+		case parenthesesL: if(const uint8_t tt = peekToken().type; (tt == keywordInt || tt == keywordChar)){token t1 = eatToken(); t1.val = 0; 
+		while(peekToken().type == opMul){eatToken(); if(!t1.val)t1.type = t1.type == keywordInt ? keywordIntPtr : keywordCharPtr; t1.val++;}
+		eatToken(); n = addNode(castNode); n->val = t1; addChildFromPtr(n, parseArgument()); return n;}
+		n = parseExpression(0); expect(parenthesesR); return n;
 		case opMinus: case opMul: case opBitwiseAnd:
-		n = addNode(operatorNode); addChildFromPtr(n, parseExpression(110));
+		n = addNode(operatorNode); addChildFromPtr(n, parseExpression(110)); break;
+		default:;
 	}
 	return n->val = t, n;
 }
@@ -112,9 +116,9 @@ uint16_t getPrecedence(const uint8_t t) {
 
 node* parseFuncCall(const token t){
 	node* fcNode = addNode(funcCallNode);
-	fcNode->val = t; eatToken();
+	fcNode->val = t; expect(parenthesesL);
 	while(peekToken().type != parenthesesR){
-		addChildFromPtr(fcNode, parseExpression(0)); if(peekToken().type == parenthesesR) break; eatToken();
+		addChildFromPtr(fcNode, parseExpression(0)); if(peekToken().type == parenthesesR) break; expect(endStatement);
 	}return fcNode;
 }
 
@@ -145,11 +149,11 @@ node* parseExpression(const uint16_t minPrecedence){
 
 node* parseIf(){
 	node* ifNode = addNode(conditionalNode);
-	addChildFromPtr(ifNode, parseExpression(0)); eatToken(); // eat curly to prevent double nested body stuff
-	addChildFromPtr(ifNode, parseBody());
-	if(peekToken().type == keywordElse){ eatToken(); eatToken();
+	addChildFromPtr(ifNode, parseExpression(0)); expect(curlyBraceL); // eat curly to prevent double nested body stuff
+	addChildFromPtr(ifNode, parseBody()); expect(curlyBraceR);
+	if(peekToken().type == keywordElse){ eatToken(); expect(curlyBraceL);
 		addChildFromPtr(ifNode, parseBody());
-	} ifNode->val = (token){.type = keywordIf};
+	} ifNode->val = (token){.type = keywordIf}; expect(curlyBraceR);
 	return ifNode;
 } // includes else parsing
 
@@ -163,10 +167,11 @@ node* parseWhile(){
 
 node* parseFuncDef(){
 	node* fdNode = addNode(funcDefNode);
-	node n = constructNode(literalNode); n.val = eatToken();
+	node n = constructNode(literalNode);if(peekAdvToken(1).type == opMul){const uint8_t t = eatToken().type; srcArr.tokens->type = t == keywordInt ? keywordIntPtr : keywordCharPtr;}
+	n.val = eatToken();
 	addChild(fdNode, n);
 	fdNode->val = eatToken(); eatToken();
-	while(peekToken().type != parenthesesR){addChildFromPtr(fdNode, parseArgument());}
+	while(peekToken().type != parenthesesR){addChildFromPtr(fdNode, parseArgument()); if(peekToken().type == endStatement) eatToken();}
 	eatToken(); eatToken();
 	addChildFromPtr(fdNode, parseBody());
 	return fdNode;
@@ -180,7 +185,8 @@ node* parseBody(){
 			case curlyBraceL: eatToken(); addChildFromPtr(ret, parseBody()); continue;
 			case keywordIf: eatToken(); addChildFromPtr(ret, parseIf()); continue;
 			case keywordWhile: eatToken(); addChildFromPtr(ret, parseWhile()); continue;
-			case keywordInt: case keywordChar: if(peekAdvToken(2).type == parenthesesL) addChildFromPtr(ret, parseFuncDef()); continue;
+			case keywordInt: case keywordChar: uint8_t pd = 0; if(peekAdvToken(1).type == opMul) pd = 1;
+			while(peekAdvToken(pd+2).type == opMul){pd++;} if(peekAdvToken(2+pd).type == parenthesesL && peekAdvToken(1+pd).type == identifier){addChildFromPtr(ret, parseFuncDef()); continue;}
 			default: addChildFromPtr(ret, parseExpression(0));
 		} eatToken();
 	}eatToken(); return ret;
@@ -209,3 +215,5 @@ void printTree(node* n, int depth) {
         child = child->sibling;
     }
 }
+
+void setJmpBuf(jmp_buf f){memcpy(compRetEnv, f, sizeof(jmp_buf));}

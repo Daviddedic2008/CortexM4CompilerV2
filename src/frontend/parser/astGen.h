@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <setjmp.h>
 #include <stdlib.h>
 #include "../lexer/tokenizer.h"
 
@@ -15,3 +16,5 @@ typedef struct node{
 node constructTree(tokenArray arr);
 
 void printTree(node* n, int depth);
+
+void setJmpBuf(jmp_buf f);
