@@ -8,8 +8,14 @@ typedef enum nodeType : uint8_t{
 	bodyNode, operatorNode, conditionalNode, literalNode, funcDefNode, funcCallNode, identifierNode, castNode, declarationNode
 }nodeType;
 
+typedef enum symbolType : uint8_t {global, local, arg, physical, literalSymbol, invalidSymbol}symbolType;
+
+typedef struct{
+	symbolType type; tokenType varType; int32_t vReg;
+}symbol;
+
 typedef struct node{
-	nodeType type; token val;
+	nodeType type; token val; symbol symbolData;
 	struct node* firstChild; struct node* lastChild; struct node* sibling;
 }node;
 
@@ -18,3 +24,7 @@ node constructTree(tokenArray arr);
 void printTree(node* n, int depth);
 
 void setJmpBuf(jmp_buf f);
+
+uint32_t getUsedVRegs();
+
+uint32_t getNumFuncs();

@@ -1,4 +1,5 @@
-#include "frontend/parser/astGen.h"
+#include "frontend/parser/3opIrGen.h"
+#include "helper/filereader.h"
 #include <stdio.h>
 
 int main(int argc, char* argv[]){
@@ -6,10 +7,17 @@ int main(int argc, char* argv[]){
 	if(!setjmp(compRetEnv)){
 		setJmpBuf(compRetEnv);
 		verifyAlphabeticalOrder();
-		char src[] = "int x(int a, int b){}";
+		char* src = loadFileToBuffer(argv[1]);
 		tokenArray a = tokenizeSource(src);
 		node b = constructTree(a);
+		printf("\x1b[1;32mConstructed AST\x1b[0m\n");
+		printf("\n\n");
+		printf("\x1b[36mAST\x1b[0m\n\n");
 		printTree(&b, 0);
+		printf("\n\n");
+		printf("\x1b[1;32mGenerated 3AC\x1b[0m\n\n");
+		printf("\x1b[36m3AC IR\x1b[0m\n\n");
+		linearizeAST(&b); 
 	} else{
 		fprintf(stderr, "ERRORS ENCOUNTERED IN COMPILATION\n\n");
 	}

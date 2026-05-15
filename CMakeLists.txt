@@ -12,7 +12,9 @@ add_executable(GPC
     src/main.c
 	src/frontend/lexer/tokenizer.c
 	src/frontend/parser/astGen.c
+	src/frontend/parser/3opIrGen.c
 	src/helper/arenaAlloc.c
+	src/helper/filereader.c
 )
 target_compile_options(${PROJECT_NAME} PRIVATE -O2)
 target_link_options(${PROJECT_NAME} PRIVATE -s)
